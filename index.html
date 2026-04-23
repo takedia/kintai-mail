@@ -73,11 +73,15 @@
 
 <details id="settingsBlock">
   <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
-  <label class="block">送信先メールアドレス（未入力では送信ボタンが無効。候補から選択 / 直接入力どちらも可）</label>
+  <label class="block">送信先メールアドレス（ボタンで選択 / 直接入力どちらも可）</label>
   <input type="email" id="toAddr" list="toAddrList" placeholder="例: kinmu@yuusin-d.com" autocomplete="off">
   <datalist id="toAddrList">
     <option value="kinmu@yuusin-d.com">勤怠連絡（勤務先）</option>
   </datalist>
+  <div class="actions" style="margin-top:6px">
+    <button type="button" class="quick" onclick="setToAddr('kinmu@yuusin-d.com')">勤怠連絡を選択</button>
+    <button type="button" class="quick" onclick="setToAddr('')">クリア</button>
+  </div>
   <label class="block">氏名（件名・本文に挿入）</label>
   <input type="text" id="senderName" placeholder="例: 友進　太郎">
   <div class="actions">
@@ -293,6 +297,11 @@ function setAbsenceDate(offsetDays) {
   d.setDate(d.getDate() + offsetDays);
   const v = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   document.getElementById('absenceDate').value = v;
+  update();
+}
+
+function setToAddr(addr) {
+  document.getElementById('toAddr').value = addr;
   update();
 }
 
