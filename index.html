@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="勤怠連絡">
+<meta name="theme-color" content="#1a73e8">
+<title>勤怠連絡メール作成</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+    margin: 0 auto; padding: 16px; max-width: 640px;
+    background: #f5f5f7; color: #222; line-height: 1.5;
+  }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  fieldset {
+    border: 1px solid #d0d0d5; border-radius: 8px; padding: 12px;
+    margin: 0 0 12px; background: #fff;
+  }
+  legend { font-weight: bold; padding: 0 6px; font-size: 14px; }
+  label.block { display: block; margin: 8px 0 4px; font-size: 13px; color: #555; }
+  input[type=text], input[type=email], input[type=date], select {
+    width: 100%; padding: 10px; font-size: 16px;
+    border: 1px solid #bbb; border-radius: 4px; background: #fff;
+  }
+  .radios { display: flex; flex-wrap: wrap; gap: 6px; }
+  .radios label {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 8px 12px; border: 1px solid #bbb; border-radius: 4px;
+    background: #fafafa; cursor: pointer; font-size: 14px;
+  }
+  .radios input { margin: 0; }
+  .radios label:has(input:checked) {
+    background: #e3f2fd; border-color: #1a73e8; color: #1a73e8; font-weight: bold;
+  }
+  .preview pre {
+    white-space: pre-wrap; word-wrap: break-word; margin: 0 0 8px;
+    font-family: inherit; font-size: 14px;
+    background: #f4f4f6; padding: 10px; border-radius: 4px; border: 1px solid #e0e0e0;
+  }
+  .preview h3 { margin: 8px 0 4px; font-size: 12px; color: #666; font-weight: normal; }
+  button {
+    min-height: 48px; padding: 12px 18px; font-size: 16px; font-weight: bold;
+    border: 0; border-radius: 6px;
+    background: #1a73e8; color: #fff; cursor: pointer;
+  }
+  button.secondary { background: #5f6368; }
+  button.quick {
+    min-height: 40px; padding: 8px 14px; font-size: 14px; font-weight: normal;
+    background: #e8f0fe; color: #1a73e8; border: 1px solid #c8d8f5;
+  }
+  button:disabled { background: #bbb; cursor: not-allowed; color: #fff; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .small { font-size: 12px; color: #666; margin-top: 4px; }
+  details { margin-bottom: 12px; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #d0d0d5; }
+  summary { cursor: pointer; font-weight: bold; font-size: 14px; }
+  .warn {
+    background: #fff3cd; border: 1px solid #ffeeba; color: #856404;
+    padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 8px;
+  }
+  .info {
+    background: #e8f0fe; border: 1px solid #c8d8f5; color: #174ea6;
+    padding: 8px 10px; border-radius: 4px; font-size: 12px; margin-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+
+<h1>勤怠連絡メール作成</h1>
+
+<details id="settingsBlock">
+  <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
+  <label class="block">送信先メールアドレス（未入力では送信ボタンが無効。候補から選択 / 直接入力どちらも可）</label>
+  <input type="email" id="toAddr" list="toAddrList" placeholder="例: kinmu@yuusin-d.com" autocomplete="off">
+  <datalist id="toAddrList">
+    <option value="kinmu@yuusin-d.com">勤怠連絡（勤務先）</option>
+  </datalist>
+  <label class="block">氏名（件名・本文に挿入）</label>
+  <input type="text" id="senderName" placeholder="例: 友進　太郎">
+  <div class="actions">
+    <button onclick="saveSettings()">設定を保存</button>
+    <button class="secondary" onclick="clearSettings()">設定をクリア</button>
+  </div>
+  <div class="small" id="storageStatus" style="margin-top:6px"></div>
+</details>
+
+<fieldset>
+  <legend>1. 種別</legend>
+  <div class="radios" id="kindRadios">
+    <label><input type="radio" name="kind" value="有給">有給</label>
+    <label><input type="radio" name="kind" value="欠勤" checked>欠勤</label>
+    <label><input type="radio" name="kind" value="振替">振替</label>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>2. 理由カテゴリ</legend>
+  <div class="radios" id="categoryRadios">
+    <label><input type="radio" name="category" value="自己都合" checked>自己都合</label>
+    <label><input type="radio" name="category" value="天候不良：現場作業">天候不良：現場作業</label>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>3. 欠勤日</legend>
+  <input type="date" id="absenceDate">
+  <div class="actions" style="margin-top:8px">
+    <button type="button" class="quick" onclick="setAbsenceDate(0)">今日</button>
+    <button type="button" class="quick" onclick="setAbsenceDate(1)">明日</button>
+  </div>
+</fieldset>
+
+<fieldset id="furikaeBlock" style="display:none">
+  <legend>4. 振替元の休日出勤日</legend>
+  <input type="date" id="furikaeDate">
+  <div class="small">「振替」を選択した場合のみ入力。</div>
+</fieldset>
+
+<fieldset class="preview">
+  <legend>プレビュー</legend>
+  <h3>件名</h3>
+  <pre id="previewSubject"></pre>
+  <h3>本文</h3>
+  <pre id="previewBody"></pre>
+  <div class="actions">
+    <button id="sendBtn" onclick="sendViaMailto()">📨 メールアプリで送信</button>
+    <button class="secondary" id="sendBtnGmail" onclick="sendViaGmailWeb()">🌐 Gmail（ブラウザ）</button>
+  </div>
+  <div class="actions">
+    <button class="secondary" onclick="copyText('subject')">件名コピー</button>
+    <button class="secondary" onclick="copyText('body')">本文コピー</button>
+  </div>
+  <div class="warn" id="warnTo" style="display:none">
+    ⚠️ 送信先メールアドレスが未入力です。設定パネルから入力または候補から選択してください。
+  </div>
+  <div class="warn" id="warnName" style="display:none">
+    ⚠️ 氏名が未入力です。設定パネルから入力してください。
+  </div>
+  <div class="warn" id="warnFurikae" style="display:none">
+    ⚠️ 振替元の休日出勤日（4. 項目）が未入力です。プレビューに「◯月◯日」と表示されます。
+  </div>
+</fieldset>
+
+<script>
+const STORAGE_KEY = 'kintai_mail_settings_v1';
+
+function loadSettings() {
+  const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  document.getElementById('toAddr').value = s.toAddr || '';
+  document.getElementById('senderName').value = s.senderName || '';
+}
+
+function saveSettings() {
+  const s = {
+    toAddr: getLiveToAddr(),
+    senderName: getLiveSenderName(),
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    alert('設定を保存しました');
+  } catch (e) {
+    alert('保存に失敗しました（localStorageが使えない環境かもしれません）');
+  }
+  update();
+}
+
+function clearSettings() {
+  if (!confirm('設定をクリアします。よろしいですか?')) return;
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  document.getElementById('toAddr').value = '';
+  document.getElementById('senderName').value = '';
+  update();
+}
+
+function getSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+// 入力欄から現在値をライブで取得（保存ボタンを押さなくてもプレビューに反映）
+function getLiveToAddr() {
+  return (document.getElementById('toAddr').value || '').trim();
+}
+function getLiveSenderName() {
+  return (document.getElementById('senderName').value || '').trim();
+}
+
+function toFullWidth(str) {
+  return str.replace(/[0-9]/g, c =>
+    String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
+}
+
+function parseDate(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  const days = ['日','月','火','水','木','金','土'];
+  return {
+    month: d.getMonth() + 1,
+    day: d.getDate(),
+    weekday: days[d.getDay()],
+  };
+}
+
+function getKind() {
+  return document.querySelector('input[name=kind]:checked')?.value || '';
+}
+function getCategory() {
+  return document.querySelector('input[name=category]:checked')?.value || '';
+}
+
+function buildSubject(name) {
+  const kind = getKind();
+  const date = parseDate(document.getElementById('absenceDate').value);
+  if (!date || !kind) return '';
+  const dateStr = toFullWidth(`${date.month}月${date.day}日`);
+  return `欠勤届：${kind}：${dateStr}：${name || ''}`;
+}
+
+function buildBody(name) {
+  const kind = getKind();
+  const category = getCategory();
+  const date = parseDate(document.getElementById('absenceDate').value);
+  if (!date) return '';
+  const mark = '●';
+  const yuukyuMark = kind === '有給' ? mark : '';
+  const kekkinMark = kind === '欠勤' ? mark : '';
+
+  let furikaeLine;
+  if (kind === '振替') {
+    const fd = parseDate(document.getElementById('furikaeDate').value);
+    const fdStr = fd ? `${fd.month}月${fd.day}日` : '◯月◯日';
+    furikaeLine = `振替：${mark}（${fdStr}の休日出勤を振替）`;
+  } else {
+    furikaeLine = `振替：（　月　日の休日出勤を振替）`;
+  }
+
+  return `欠勤届（${mark}${category}）
+欠勤日：　${date.month}月　${date.day}日（${date.weekday}曜日）
+有給：${yuukyuMark}
+欠勤：${kekkinMark}
+${furikaeLine}
+氏名：${name || ''}`;
+}
+
+function updateSettingsBadge() {
+  // 設定パネルの見出し横に「現在入力中の値」を即時表示（保存有無に関わらず）
+  const badge = document.getElementById('settingsBadge');
+  if (!badge) return;
+  const liveName = getLiveSenderName();
+  const liveAddr = getLiveToAddr();
+  const saved = getSettings();
+  const isSaved = liveName === (saved.senderName || '') && liveAddr === (saved.toAddr || '') && (liveName || liveAddr);
+
+  badge.style.fontWeight = 'normal';
+  badge.style.fontSize = '13px';
+
+  if (liveName || liveAddr) {
+    const savedMark = isSaved ? '💾 ' : '';
+    badge.textContent = `（${savedMark}${liveName || '氏名なし'} / ${liveAddr || '宛先なし'}）`;
+    badge.style.color = '#1a5d1a';
+  } else {
+    badge.textContent = '（未入力）';
+    badge.style.color = '#b00020';
+  }
+
+  // 保存ステータス枠は問題が無ければ非表示
+  const status = document.getElementById('storageStatus');
+  if (!status) return;
+  let storageOk = false;
+  try {
+    localStorage.setItem('__test__', '1');
+    localStorage.removeItem('__test__');
+    storageOk = true;
+  } catch (e) {}
+  if (!storageOk) {
+    status.textContent = '⚠️ この環境では保存できません。ブラウザで開いて使ってください。';
+    status.style.color = '#b00020';
+    status.style.display = 'block';
+  } else {
+    status.style.display = 'none';
+  }
+}
+
+function setAbsenceDate(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const v = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('absenceDate').value = v;
+  update();
+}
+
+function update() {
+  const name = getLiveSenderName();
+  const toAddr = getLiveToAddr();
+  document.getElementById('previewSubject').textContent = buildSubject(name);
+  document.getElementById('previewBody').textContent = buildBody(name);
+
+  const isFurikae = getKind() === '振替';
+  document.getElementById('furikaeBlock').style.display = isFurikae ? 'block' : 'none';
+
+  const furikaeDateValue = document.getElementById('furikaeDate').value;
+  const furikaeMissing = isFurikae && !furikaeDateValue;
+
+  const hasTo = !!toAddr;
+  const hasName = !!name;
+  document.getElementById('sendBtn').disabled = !hasTo;
+  document.getElementById('sendBtnGmail').disabled = !hasTo;
+  document.getElementById('warnTo').style.display = hasTo ? 'none' : 'block';
+  document.getElementById('warnName').style.display = hasName ? 'none' : 'block';
+  document.getElementById('warnFurikae').style.display = furikaeMissing ? 'block' : 'none';
+
+  updateSettingsBadge();
+}
+
+function getMailParts() {
+  const toAddr = getLiveToAddr();
+  if (!toAddr) {
+    alert('送信先メールアドレスが未入力です');
+    return null;
+  }
+  const subject = document.getElementById('previewSubject').textContent;
+  const body = document.getElementById('previewBody').textContent;
+  if (!subject || !body) {
+    alert('件名/本文が未生成です。種別・欠勤日などをご確認ください。');
+    return null;
+  }
+  return { toAddr, subject, body };
+}
+
+function sendViaGmailWeb() {
+  const m = getMailParts(); if (!m) return;
+  const url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+    `&to=${encodeURIComponent(m.toAddr)}` +
+    `&su=${encodeURIComponent(m.subject)}` +
+    `&body=${encodeURIComponent(m.body)}`;
+  window.open(url, '_blank', 'noopener');
+}
+
+function sendViaMailto() {
+  const m = getMailParts(); if (!m) return;
+  const url = `mailto:${encodeURIComponent(m.toAddr)}` +
+    `?subject=${encodeURIComponent(m.subject)}` +
+    `&body=${encodeURIComponent(m.body)}`;
+  window.location.href = url;
+}
+
+async function copyText(which) {
+  const text = which === 'subject'
+    ? document.getElementById('previewSubject').textContent
+    : document.getElementById('previewBody').textContent;
+  if (!text) { alert('コピー対象がありません'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    alert((which === 'subject' ? '件名' : '本文') + 'をコピーしました');
+  } catch (e) {
+    // フォールバック: 一時テキストエリア経由
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); alert('コピーしました'); }
+    catch { alert('コピーに失敗しました'); }
+    document.body.removeChild(ta);
+  }
+}
+
+function init() {
+  try { loadSettings(); } catch (e) { console.error('loadSettings failed:', e); }
+
+  // 欠勤日は未入力で開始（自動入力しない）
+
+  document.querySelectorAll('input').forEach(el => {
+    el.addEventListener('change', update);
+    el.addEventListener('input', update);
+  });
+
+  update();
+
+  // 設定（toAddr or 氏名）が未入力なら設定パネルを開く
+  if (!getLiveToAddr() || !getLiveSenderName()) {
+    const sb = document.getElementById('settingsBlock');
+    if (sb) sb.open = true;
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
