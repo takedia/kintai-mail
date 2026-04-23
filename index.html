@@ -79,7 +79,7 @@
     <option value="kinmu@yuusin-d.com">勤怠連絡（勤務先）</option>
   </datalist>
   <div class="actions" style="margin-top:6px">
-    <button type="button" class="quick" onclick="setToAddr('kinmu@yuusin-d.com')">勤怠連絡を選択</button>
+    <button type="button" class="quick" onclick="setToAddr('kinmu@yuusin-d.com')">デフォルトを選択</button>
     <button type="button" class="quick" onclick="setToAddr('')">クリア</button>
   </div>
   <label class="block">氏名（件名・本文に挿入）</label>
@@ -94,8 +94,8 @@
 <fieldset>
   <legend>1. 種別</legend>
   <div class="radios" id="kindRadios">
-    <label><input type="radio" name="kind" value="有給">有給</label>
-    <label><input type="radio" name="kind" value="欠勤" checked>欠勤</label>
+    <label><input type="radio" name="kind" value="有給" checked>有給</label>
+    <label><input type="radio" name="kind" value="欠勤">欠勤</label>
     <label><input type="radio" name="kind" value="振替">振替</label>
   </div>
 </fieldset>
