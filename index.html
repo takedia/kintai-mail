@@ -66,11 +66,26 @@
     background: #e8f0fe; border: 1px solid #c8d8f5; color: #174ea6;
     padding: 8px 10px; border-radius: 4px; font-size: 12px; margin-bottom: 12px;
   }
+  .day-list { margin-top: 10px; }
+  .day-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; margin: 4px 0; border-radius: 6px;
+    cursor: pointer; font-size: 14px; user-select: none;
+    min-height: 40px;
+  }
+  .day-row.on { background: #e3f2fd; color: #1a73e8; border: 1px solid #1a73e8; font-weight: bold; }
+  .day-row.off { background: #f5f5f5; color: #999; border: 1px solid #ddd; text-decoration: line-through; }
+  .day-row .toggle-icon { font-size: 16px; }
+  .absence-count {
+    font-size: 15px; font-weight: bold; color: #1a73e8;
+    margin-top: 10px; padding: 10px; background: #e8f0fe;
+    border-radius: 6px; text-align: center; border: 1px solid #c8d8f5;
+  }
 </style>
 </head>
 <body>
 
-<h1>勤怠連絡メール作成<span class="version">v1.01</span></h1>
+<h1>勤怠連絡メール作成<span class="version">v1.02</span></h1>
 
 <details id="settingsBlock">
   <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
@@ -122,9 +137,10 @@
     <div class="actions" style="margin-top:8px">
       <button type="button" class="quick" onclick="setAbsenceDateEndOffset(1)">+1日</button>
       <button type="button" class="quick" onclick="setAbsenceDateEndOffset(2)">+2日</button>
-      <button type="button" class="quick" onclick="setAbsenceDateEndOffset(4)">+4日（週末跨ぎ）</button>
       <button type="button" class="quick" onclick="document.getElementById('absenceDateEnd').value=''; update();">クリア</button>
     </div>
+    <div id="dayList" class="day-list"></div>
+    <div id="absenceCount" class="absence-count" style="display:none"></div>
   </div>
 </fieldset>
 
@@ -359,6 +375,84 @@ function setAbsenceDateEndOffset(addDays) {
   update();
 }
 
+// 日付ごとの休業/勤務状態を保持（key=YYYY-M-D, value='on'|'off'）
+const dayStates = {};
+
+function fmtKey(d) {
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+
+function regenerateDayList() {
+  const container = document.getElementById('dayList');
+  const countEl = document.getElementById('absenceCount');
+  const startStr = document.getElementById('absenceDate').value;
+  const endStr = document.getElementById('absenceDateEnd').value;
+
+  container.innerHTML = '';
+
+  if (!startStr || !endStr || startStr === endStr || getKind() === '振替') {
+    countEl.style.display = 'none';
+    return;
+  }
+
+  const s = new Date(startStr + 'T00:00:00');
+  const e = new Date(endStr + 'T00:00:00');
+  if (s > e) {
+    countEl.style.display = 'none';
+    return;
+  }
+
+  const weekdays = ['日','月','火','水','木','金','土'];
+  const currentKeys = new Set();
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    const key = fmtKey(d);
+    currentKeys.add(key);
+    const dow = d.getDay();
+    const isWeekend = (dow === 0 || dow === 6);
+    // 初期状態（未設定の場合のみ）: 土日はoff、平日はon
+    if (dayStates[key] === undefined) {
+      dayStates[key] = isWeekend ? 'off' : 'on';
+    }
+    const state = dayStates[key];
+    const row = document.createElement('div');
+    row.className = 'day-row ' + state;
+    row.dataset.key = key;
+    row.innerHTML =
+      `<span class="toggle-icon">${state === 'on' ? '✅' : '⬜'}</span>` +
+      `<span>${d.getMonth()+1}/${d.getDate()} (${weekdays[dow]}) ${state === 'on' ? '休業' : '勤務/既休'}</span>`;
+    row.addEventListener('click', () => toggleDayState(key));
+    container.appendChild(row);
+  }
+
+  // 範囲外の古いキーは掃除
+  Object.keys(dayStates).forEach(k => {
+    if (!currentKeys.has(k)) delete dayStates[k];
+  });
+
+  updateAbsenceCount();
+}
+
+function toggleDayState(key) {
+  dayStates[key] = dayStates[key] === 'on' ? 'off' : 'on';
+  regenerateDayList();
+}
+
+function updateAbsenceCount() {
+  const countEl = document.getElementById('absenceCount');
+  const rows = document.querySelectorAll('#dayList .day-row');
+  if (rows.length === 0) {
+    countEl.style.display = 'none';
+    return;
+  }
+  let onCount = 0, offCount = 0;
+  rows.forEach(r => {
+    if (r.classList.contains('on')) onCount++;
+    else offCount++;
+  });
+  countEl.style.display = 'block';
+  countEl.innerHTML = `休業日数: <b>${onCount}日</b> / 範囲内: ${rows.length}日 （勤務・既休扱い: ${offCount}日）`;
+}
+
 function update() {
   const name = getLiveSenderName();
   const toAddr = getLiveToAddr();
@@ -369,6 +463,8 @@ function update() {
   document.getElementById('furikaeBlock').style.display = isFurikae ? 'block' : 'none';
   // 振替時は終了日（連続日数）入力欄を隠す
   document.getElementById('endDateBlock').style.display = isFurikae ? 'none' : 'block';
+
+  regenerateDayList();
 
   const furikaeDateValue = document.getElementById('furikaeDate').value;
   const furikaeMissing = isFurikae && !furikaeDateValue;
