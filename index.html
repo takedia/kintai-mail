@@ -115,6 +115,16 @@
     <button type="button" class="quick" onclick="setAbsenceDate(0)">今日</button>
     <button type="button" class="quick" onclick="setAbsenceDate(1)">明日</button>
   </div>
+  <div id="endDateBlock" style="margin-top:10px">
+    <label class="block">連続する場合: 終了日（任意・有給/欠勤のみ）</label>
+    <input type="date" id="absenceDateEnd">
+    <div class="actions" style="margin-top:8px">
+      <button type="button" class="quick" onclick="setAbsenceDateEndOffset(1)">+1日</button>
+      <button type="button" class="quick" onclick="setAbsenceDateEndOffset(2)">+2日</button>
+      <button type="button" class="quick" onclick="setAbsenceDateEndOffset(4)">+4日（週末跨ぎ）</button>
+      <button type="button" class="quick" onclick="document.getElementById('absenceDateEnd').value=''; update();">クリア</button>
+    </div>
+  </div>
 </fieldset>
 
 <fieldset id="furikaeBlock" style="display:none">
@@ -219,19 +229,46 @@ function getCategory() {
   return document.querySelector('input[name=category]:checked')?.value || '';
 }
 
+function getDateRange() {
+  const start = parseDate(document.getElementById('absenceDate').value);
+  const end = parseDate(document.getElementById('absenceDateEnd').value);
+  if (!start) return null;
+  if (!end || (end.month === start.month && end.day === start.day)) {
+    return { start, end: null };
+  }
+  return { start, end };
+}
+
+function formatRangeForSubject(r) {
+  // 件名用: 全角数字、月またぎ判定あり
+  if (!r.end) return toFullWidth(`${r.start.month}月${r.start.day}日`);
+  if (r.end.month === r.start.month) {
+    return toFullWidth(`${r.start.month}月${r.start.day}日〜${r.end.day}日`);
+  }
+  return toFullWidth(`${r.start.month}月${r.start.day}日〜${r.end.month}月${r.end.day}日`);
+}
+
+function formatRangeForBody(r) {
+  // 本文用: 半角数字、月またぎ判定あり
+  if (!r.end) return `${r.start.month}月　${r.start.day}日（${r.start.weekday}曜日）`;
+  if (r.end.month === r.start.month) {
+    return `${r.start.month}月　${r.start.day}日〜${r.end.day}日（${r.start.weekday}〜${r.end.weekday}曜日）`;
+  }
+  return `${r.start.month}月${r.start.day}日〜${r.end.month}月${r.end.day}日（${r.start.weekday}〜${r.end.weekday}曜日）`;
+}
+
 function buildSubject(name) {
   const kind = getKind();
-  const date = parseDate(document.getElementById('absenceDate').value);
-  if (!date || !kind) return '';
-  const dateStr = toFullWidth(`${date.month}月${date.day}日`);
-  return `欠勤届：${kind}：${dateStr}：${name || ''}`;
+  const r = getDateRange();
+  if (!r || !kind) return '';
+  return `欠勤届：${kind}：${formatRangeForSubject(r)}：${name || ''}`;
 }
 
 function buildBody(name) {
   const kind = getKind();
   const category = getCategory();
-  const date = parseDate(document.getElementById('absenceDate').value);
-  if (!date) return '';
+  const r = getDateRange();
+  if (!r) return '';
   const mark = '●';
   const yuukyuMark = kind === '有給' ? mark : '';
   const kekkinMark = kind === '欠勤' ? mark : '';
@@ -245,8 +282,10 @@ function buildBody(name) {
     furikaeLine = `振替：（　月　日の休日出勤を振替）`;
   }
 
+  const dateLine = formatRangeForBody(r);
+
   return `欠勤届（${mark}${category}）
-欠勤日：　${date.month}月　${date.day}日（${date.weekday}曜日）
+欠勤日：　${dateLine}
 有給：${yuukyuMark}
 欠勤：${kekkinMark}
 ${furikaeLine}
@@ -305,6 +344,20 @@ function setToAddr(addr) {
   update();
 }
 
+function setAbsenceDateEndOffset(addDays) {
+  // 開始日(absenceDate)から指定日数後を終了日に
+  const startStr = document.getElementById('absenceDate').value;
+  if (!startStr) {
+    alert('まず開始日（3. 欠勤日）を入力してください');
+    return;
+  }
+  const d = new Date(startStr + 'T00:00:00');
+  d.setDate(d.getDate() + addDays);
+  const v = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('absenceDateEnd').value = v;
+  update();
+}
+
 function update() {
   const name = getLiveSenderName();
   const toAddr = getLiveToAddr();
@@ -313,6 +366,8 @@ function update() {
 
   const isFurikae = getKind() === '振替';
   document.getElementById('furikaeBlock').style.display = isFurikae ? 'block' : 'none';
+  // 振替時は終了日（連続日数）入力欄を隠す
+  document.getElementById('endDateBlock').style.display = isFurikae ? 'none' : 'block';
 
   const furikaeDateValue = document.getElementById('furikaeDate').value;
   const furikaeMissing = isFurikae && !furikaeDateValue;
