@@ -85,7 +85,7 @@
 </head>
 <body>
 
-<h1>勤怠連絡メール作成<span class="version">v1.02</span></h1>
+<h1>勤怠連絡メール作成<span class="version">v1.03</span></h1>
 
 <details id="settingsBlock">
   <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
@@ -274,11 +274,28 @@ function formatRangeForBody(r) {
   return `${r.start.month}月${r.start.day}日〜${r.end.month}月${r.end.day}日（${r.start.weekday}〜${r.end.weekday}曜日）`;
 }
 
+function getAbsenceDayCount() {
+  const r = getDateRange();
+  if (!r) return 0;
+  if (!r.end) return 1; // 単日
+  // 範囲内で ON 状態の日をカウント
+  let count = 0;
+  const s = new Date(document.getElementById('absenceDate').value + 'T00:00:00');
+  const e = new Date(document.getElementById('absenceDateEnd').value + 'T00:00:00');
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    const key = fmtKey(d);
+    if (dayStates[key] === 'on') count++;
+  }
+  return count;
+}
+
 function buildSubject(name) {
   const kind = getKind();
   const r = getDateRange();
   if (!r || !kind) return '';
-  return `欠勤届：${kind}：${formatRangeForSubject(r)}：${name || ''}`;
+  const count = getAbsenceDayCount();
+  const countPart = r.end && count > 0 ? toFullWidth(`（${count}日間）`) : '';
+  return `欠勤届：${kind}：${formatRangeForSubject(r)}${countPart}：${name || ''}`;
 }
 
 function buildBody(name) {
@@ -299,7 +316,9 @@ function buildBody(name) {
     furikaeLine = `振替：（　月　日の休日出勤を振替）`;
   }
 
-  const dateLine = formatRangeForBody(r);
+  const count = getAbsenceDayCount();
+  const countPart = r.end && count > 0 ? `（${count}日間）` : '';
+  const dateLine = formatRangeForBody(r) + countPart;
 
   return `欠勤届（${mark}${category}）
 欠勤日：　${dateLine}
