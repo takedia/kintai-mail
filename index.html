@@ -85,19 +85,41 @@
 </head>
 <body>
 
-<h1>勤怠連絡メール作成<span class="version">v1.05</span></h1>
+<div id="userLockOverlay" hidden style="position:fixed;inset:0;background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 100%);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px">
+  <form id="userLockForm" style="background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.08);padding:24px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px" onsubmit="event.preventDefault();submitUserLogin();">
+    <h2 style="margin:0;text-align:center;font-size:18px">勤怠連絡メール作成</h2>
+    <p style="margin:0;text-align:center;color:#666;font-size:13px">パスワードを入力してください</p>
+    <input type="password" id="userPw" placeholder="パスワード" autocomplete="current-password" style="width:100%;font-size:16px;padding:10px;border:1px solid #bbb;border-radius:4px" autofocus>
+    <button type="submit" id="userLoginBtn" style="width:100%">OK</button>
+    <p class="small" id="userLoginMsg" style="margin:0;text-align:center;color:#dc2626"></p>
+  </form>
+</div>
+
+<h1>勤怠連絡メール作成<span class="version">v1.06</span></h1>
 
 <details id="settingsBlock">
   <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
-  <label class="block">送信先メールアドレス <span id="toAddrLockMark" style="color:#888;font-size:12px">🔒 管理者のみ変更可</span></label>
+  <label class="block" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <span>送信先メールアドレス</span>
+    <span id="toAddrLockMark" style="color:#888;font-size:12px">🔒 管理者のみ変更可</span>
+    <button type="button" id="adminEntryBtn" onclick="openAdminLogin()"
+      style="margin-left:auto;padding:2px 8px;font-size:11px;min-height:0;background:#fff;color:#1a73e8;border:1px solid #1a73e8;border-radius:3px;cursor:pointer;font-weight:normal">🔓 管理者</button>
+  </label>
   <input type="email" id="toAddr" list="toAddrList" placeholder="例: kinmu@yuusin-d.com" autocomplete="off" readonly>
   <datalist id="toAddrList">
     <option value="kinmu@yuusin-d.com">勤怠連絡（勤務先）</option>
   </datalist>
-  <div class="actions" style="margin-top:6px" id="toAddrAdminActions" hidden>
-    <button type="button" class="quick" onclick="setToAddr('kinmu@yuusin-d.com')">デフォルトに戻す</button>
-    <button type="button" class="quick" onclick="setToAddr('')">クリア</button>
+
+  <div id="adminLoginForm" hidden style="margin-top:8px;padding:10px;background:#fafafa;border:1px solid #e0e0e0;border-radius:4px">
+    <div class="small" style="font-weight:bold;margin-bottom:6px">🔓 管理者ログイン</div>
+    <input type="password" id="adminPw" placeholder="管理者パスワード" autocomplete="current-password" style="margin-bottom:6px">
+    <div class="actions">
+      <button type="button" class="quick" onclick="submitAdminLogin()">ログイン</button>
+      <button type="button" class="quick" onclick="closeAdminLogin()">キャンセル</button>
+    </div>
+    <div class="small" id="adminLoginMsg" style="margin-top:4px"></div>
   </div>
+
   <label class="block">氏名（件名・本文に挿入）</label>
   <input type="text" id="senderName" placeholder="例: 友進　太郎">
   <div class="actions">
@@ -106,40 +128,49 @@
   </div>
   <div class="small" id="storageStatus" style="margin-top:6px"></div>
 
-  <div id="adminBlock" style="margin-top:14px;padding-top:10px;border-top:1px dashed #ccc">
-    <div id="adminLoginRow">
-      <button type="button" class="quick" onclick="openAdminLogin()">🔓 管理者ログイン</button>
-      <span class="small" style="margin-left:6px">送信先メールアドレスを変更するにはログインが必要です</span>
-    </div>
-    <div id="adminLoginForm" hidden style="margin-top:8px">
-      <input type="password" id="adminPw" placeholder="管理者パスワード" autocomplete="current-password" style="margin-bottom:6px">
-      <div class="actions">
-        <button type="button" class="quick" onclick="submitAdminLogin()">ログイン</button>
-        <button type="button" class="quick" onclick="closeAdminLogin()">キャンセル</button>
-      </div>
-      <div class="small" id="adminLoginMsg" style="margin-top:4px"></div>
-    </div>
-    <div id="adminLoggedInRow" hidden style="margin-top:6px">
-      <span class="small" style="color:#1a5d1a">✅ 管理者ログイン中（このタブを閉じるまで有効）</span>
-      <button type="button" class="quick" style="margin-left:8px" onclick="adminLogout()">ログアウト</button>
+  <div id="adminPanel" hidden style="margin-top:14px;padding:12px;border:1px solid #b6e3b6;background:#f4fff4;border-radius:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+      <span class="small" style="color:#1a5d1a;font-weight:bold">✅ 管理者ログイン中（このタブを閉じるまで有効）</span>
+      <button type="button" class="quick" onclick="adminLogout()">ログアウト</button>
     </div>
 
-    <div id="hashToolBlock" hidden style="margin-top:12px;padding-top:10px;border-top:1px dashed #ccc">
-      <div class="small" style="font-weight:bold;margin-bottom:4px">🔑 管理者パスワード変更（ハッシュ生成ツール）</div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #b6e3b6">
+      <div class="small" style="font-weight:bold;margin-bottom:4px">👥 使用者向け共通パスワード（アプリ起動時のゲート）</div>
+      <div class="small" id="userPwStatus" style="margin-bottom:6px">確認中…</div>
       <div class="small" style="margin-bottom:6px;color:#555">
-        新しいパスワードを入力 → 「生成」 → ハッシュをコピー →
-        <a href="https://github.com/takedia/kintai-mail/edit/main/data/auth.json" target="_blank" rel="noopener">data/auth.json を編集</a>
-        → <code>adminPasswordHash</code> の値を置き換えて Commit。
+        <strong>有効化／変更</strong>: 下に新パスを入力 → 「生成」 → コピー →
+        <a href="https://github.com/takedia/kintai-mail/edit/main/data/auth.json" target="_blank" rel="noopener">auth.json を編集</a>
+        → <code>passwordHash</code> に貼り付け Commit。<br>
+        <strong>無効化</strong>: 「📋 無効化用 JSON」をコピー → 同箇所の <code>"passwordHash": "..."</code> 行を置換して Commit。
       </div>
-      <input type="text" id="hashInput" placeholder="新しいパスワード" autocomplete="off" style="margin-bottom:6px">
+      <input type="text" id="userPwInput" placeholder="新しい使用者パスワード" autocomplete="off" style="margin-bottom:6px">
+      <div class="actions">
+        <button type="button" class="quick" onclick="generateUserHash()">生成</button>
+        <button type="button" class="quick" onclick="copyDisableSnippet()">📋 無効化用 JSON</button>
+      </div>
+      <div id="userHashOutBox" hidden style="margin-top:8px;padding:8px 10px;background:#fff;border-radius:4px;border:1px solid #ccc">
+        <code id="userHashOut" style="font-size:11px;font-family:ui-monospace,'Courier New',monospace;word-break:break-all;display:block;margin-bottom:6px"></code>
+        <button type="button" class="quick" onclick="copyUserHash()">📋 ハッシュをコピー</button>
+      </div>
+      <div class="small" id="userHashMsg" style="margin-top:4px"></div>
+    </div>
+
+    <div id="hashToolBlock" style="margin-top:12px;padding-top:8px;border-top:1px dashed #b6e3b6">
+      <div class="small" style="font-weight:bold;margin-bottom:4px">🔑 管理者パスワード変更</div>
+      <div class="small" style="margin-bottom:6px;color:#555">
+        新パス入力 → 「生成」 → コピー →
+        <a href="https://github.com/takedia/kintai-mail/edit/main/data/auth.json" target="_blank" rel="noopener">auth.json を編集</a>
+        → <code>adminPasswordHash</code> に貼り付け Commit。
+      </div>
+      <input type="text" id="hashInput" placeholder="新しい管理者パスワード" autocomplete="off" style="margin-bottom:6px">
       <div class="actions">
         <button type="button" class="quick" onclick="generateHash()">生成</button>
       </div>
-      <div id="hashOutputBox" hidden style="margin-top:8px;padding:8px 10px;background:#f3f4f6;border-radius:6px">
+      <div id="hashOutputBox" hidden style="margin-top:8px;padding:8px 10px;background:#fff;border-radius:4px;border:1px solid #ccc">
         <code id="hashOutput" style="font-size:11px;font-family:ui-monospace,'Courier New',monospace;word-break:break-all;display:block;margin-bottom:6px"></code>
         <button type="button" class="quick" onclick="copyHash()">📋 コピー</button>
       </div>
-      <div class="small" id="hashMsg" style="margin-top:4px;color:#1a5d1a"></div>
+      <div class="small" id="hashMsg" style="margin-top:4px"></div>
     </div>
   </div>
 </details>
@@ -189,7 +220,7 @@
 
 <fieldset>
   <legend>5. 補足事項（任意）</legend>
-  <textarea id="extraNote" rows="3" placeholder="例: 急な体調不良のため、本日中の連絡となり申し訳ありません。" style="width:100%;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:4px;font-family:inherit;resize:vertical;"></textarea>
+  <textarea id="extraNote" rows="3" placeholder="例：●●時〜●●時　？時間分有給使用します" style="width:100%;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:4px;font-family:inherit;resize:vertical;"></textarea>
   <div class="small">入力した場合のみ、本文末尾に追記されます。空欄ならそのまま。</div>
 </fieldset>
 
@@ -427,11 +458,6 @@ function setAbsenceDate(offsetDays) {
   update();
 }
 
-function setToAddr(addr) {
-  document.getElementById('toAddr').value = addr;
-  update();
-}
-
 function setAbsenceDateEndOffset(addDays) {
   // 開始日(absenceDate)から指定日数後を終了日に
   const startStr = document.getElementById('absenceDate').value;
@@ -602,7 +628,7 @@ async function copyText(which) {
   }
 }
 
-// ===== 管理者ログイン =====
+// ===== 認証共通 =====
 async function sha256Hex(text) {
   const buf = new TextEncoder().encode(text);
   const hash = await crypto.subtle.digest('SHA-256', buf);
@@ -611,28 +637,66 @@ async function sha256Hex(text) {
     .join('');
 }
 
-async function fetchAdminHash() {
+async function fetchAuthInfo() {
   try {
     const res = await fetch(`${AUTH_URL}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return null;
-    const data = await res.json();
-    return typeof data?.adminPasswordHash === 'string' ? data.adminPasswordHash : null;
+    return await res.json();
   } catch (e) {
     return null;
   }
 }
 
+// ===== ユーザー側ログインゲート =====
+let userAuthHash = null; // bootstrap で取得した passwordHash（空文字なら無効）
+
+async function bootstrapUserAuth() {
+  const overlay = document.getElementById('userLockOverlay');
+  const info = await fetchAuthInfo();
+  // 取得失敗 = ローカルファイル直開きなど → ゲート無効化（フェイルオープン）
+  if (!info) {
+    overlay.hidden = true;
+    return;
+  }
+  userAuthHash = (typeof info.passwordHash === 'string') ? info.passwordHash.trim() : '';
+  if (userAuthHash.length === 0) {
+    overlay.hidden = true;
+  } else {
+    overlay.hidden = false;
+    setTimeout(() => document.getElementById('userPw')?.focus(), 50);
+  }
+}
+
+async function submitUserLogin() {
+  const pw = (document.getElementById('userPw').value || '').trim();
+  const msg = document.getElementById('userLoginMsg');
+  if (!pw) return;
+  msg.textContent = '確認中…';
+  msg.style.color = '#666';
+  const inputHash = await sha256Hex(pw);
+  if (userAuthHash && inputHash.toLowerCase() === userAuthHash.toLowerCase()) {
+    document.getElementById('userPw').value = '';
+    document.getElementById('userLockOverlay').hidden = true;
+    msg.textContent = '';
+  } else {
+    msg.textContent = 'パスワードが一致しません';
+    msg.style.color = '#dc2626';
+    setTimeout(() => { if (msg.textContent === 'パスワードが一致しません') msg.textContent = ''; }, 4000);
+  }
+}
+
+// ===== 管理者ログイン =====
 function openAdminLogin() {
-  document.getElementById('adminLoginRow').hidden = true;
+  document.getElementById('adminEntryBtn').hidden = true;
   document.getElementById('adminLoginForm').hidden = false;
   document.getElementById('adminLoginMsg').textContent = '';
   document.getElementById('adminPw').value = '';
-  document.getElementById('adminPw').focus();
+  setTimeout(() => document.getElementById('adminPw')?.focus(), 50);
 }
 
 function closeAdminLogin() {
   document.getElementById('adminLoginForm').hidden = true;
-  document.getElementById('adminLoginRow').hidden = false;
+  document.getElementById('adminEntryBtn').hidden = false;
   document.getElementById('adminPw').value = '';
 }
 
@@ -642,7 +706,8 @@ async function submitAdminLogin() {
   if (!pw) return;
   msg.textContent = '確認中…';
   msg.style.color = '#666';
-  const expected = await fetchAdminHash();
+  const info = await fetchAuthInfo();
+  const expected = info && typeof info.adminPasswordHash === 'string' ? info.adminPasswordHash : null;
   if (!expected) {
     msg.textContent = '⚠️ 認証情報の取得に失敗しました（オフライン or 設定未配置）';
     msg.style.color = '#b00020';
@@ -653,6 +718,7 @@ async function submitAdminLogin() {
     adminMode = true;
     document.getElementById('adminPw').value = '';
     applyAdminMode();
+    refreshUserPwStatus(info);
     msg.textContent = '';
   } else {
     msg.textContent = 'パスワードが一致しません';
@@ -669,40 +735,49 @@ function adminLogout() {
 function applyAdminMode() {
   const toAddrInput = document.getElementById('toAddr');
   const lockMark = document.getElementById('toAddrLockMark');
-  const adminActions = document.getElementById('toAddrAdminActions');
-  const loginRow = document.getElementById('adminLoginRow');
+  const entryBtn = document.getElementById('adminEntryBtn');
   const loginForm = document.getElementById('adminLoginForm');
-  const loggedInRow = document.getElementById('adminLoggedInRow');
-  const hashTool = document.getElementById('hashToolBlock');
+  const panel = document.getElementById('adminPanel');
 
   if (adminMode) {
     toAddrInput.removeAttribute('readonly');
     lockMark.textContent = '🔓 編集可能（管理者）';
     lockMark.style.color = '#1a5d1a';
-    adminActions.hidden = false;
-    loginRow.hidden = true;
+    entryBtn.hidden = true;
     loginForm.hidden = true;
-    loggedInRow.hidden = false;
-    if (hashTool) hashTool.hidden = false;
+    panel.hidden = false;
   } else {
     toAddrInput.setAttribute('readonly', '');
     lockMark.textContent = '🔒 管理者のみ変更可';
     lockMark.style.color = '#888';
-    adminActions.hidden = true;
-    loginRow.hidden = false;
+    entryBtn.hidden = false;
     loginForm.hidden = true;
-    loggedInRow.hidden = true;
-    if (hashTool) hashTool.hidden = true;
-    // ツールのフィールドもクリア
-    const hi = document.getElementById('hashInput');
-    const hob = document.getElementById('hashOutputBox');
-    const hm = document.getElementById('hashMsg');
-    if (hi) hi.value = '';
-    if (hob) hob.hidden = true;
-    if (hm) hm.textContent = '';
+    panel.hidden = true;
+    // 管理者用入出力をクリア
+    ['hashInput','userPwInput'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+    ['hashOutputBox','userHashOutBox'].forEach(id => { const e = document.getElementById(id); if (e) e.hidden = true; });
+    ['hashMsg','userHashMsg'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = ''; });
   }
 }
 
+// ===== 使用者向け共通パスワード状態表示 =====
+async function refreshUserPwStatus(infoArg) {
+  const el = document.getElementById('userPwStatus');
+  if (!el) return;
+  const info = infoArg || await fetchAuthInfo();
+  if (!info) {
+    el.innerHTML = '<span style="color:#b00020">⚠️ auth.json の取得に失敗</span>';
+    return;
+  }
+  const ph = (typeof info.passwordHash === 'string') ? info.passwordHash.trim() : '';
+  if (ph.length > 0) {
+    el.innerHTML = '現在: <span style="color:#1a5d1a;font-weight:bold">✅ 有効</span>（アプリ起動時にパスワード入力が必要）';
+  } else {
+    el.innerHTML = '現在: <span style="color:#c2410c;font-weight:bold">⚪ 無効</span>（誰でも起動可能）';
+  }
+}
+
+// ===== ハッシュ生成（管理者パスワード）=====
 async function generateHash() {
   const input = (document.getElementById('hashInput').value || '').trim();
   const msg = document.getElementById('hashMsg');
@@ -725,7 +800,7 @@ async function copyHash() {
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    msg.textContent = '✅ ハッシュをコピーしました。GitHub の auth.json に貼り付けてください。';
+    msg.textContent = '✅ コピー完了。auth.json の adminPasswordHash に貼り付けてください。';
     msg.style.color = '#1a5d1a';
   } catch (e) {
     msg.textContent = 'コピー失敗。手動で選択してコピーしてください。';
@@ -733,9 +808,53 @@ async function copyHash() {
   }
 }
 
+// ===== ハッシュ生成（使用者向け共通パスワード）=====
+async function generateUserHash() {
+  const input = (document.getElementById('userPwInput').value || '').trim();
+  const msg = document.getElementById('userHashMsg');
+  const box = document.getElementById('userHashOutBox');
+  const out = document.getElementById('userHashOut');
+  if (!input) {
+    msg.textContent = 'パスワードを入力してください';
+    msg.style.color = '#b00020';
+    return;
+  }
+  const hash = await sha256Hex(input);
+  out.textContent = hash;
+  box.hidden = false;
+  msg.textContent = '';
+}
+
+async function copyUserHash() {
+  const text = document.getElementById('userHashOut').textContent;
+  const msg = document.getElementById('userHashMsg');
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    msg.textContent = '✅ コピー完了。auth.json の passwordHash に貼り付けてください。';
+    msg.style.color = '#1a5d1a';
+  } catch (e) {
+    msg.textContent = 'コピー失敗。手動で選択してコピーしてください。';
+    msg.style.color = '#b00020';
+  }
+}
+
+async function copyDisableSnippet() {
+  const msg = document.getElementById('userHashMsg');
+  try {
+    await navigator.clipboard.writeText('"passwordHash": "",');
+    msg.textContent = '✅ 無効化用 JSON をコピー。auth.json の同じ行と置き換えて Commit してください。';
+    msg.style.color = '#1a5d1a';
+  } catch (e) {
+    msg.textContent = 'コピー失敗';
+    msg.style.color = '#b00020';
+  }
+}
+
 function init() {
   try { loadSettings(); } catch (e) { console.error('loadSettings failed:', e); }
   applyAdminMode();
+  bootstrapUserAuth();
 
   // 欠勤日は未入力で開始（自動入力しない）
 
