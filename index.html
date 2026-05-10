@@ -95,7 +95,7 @@
   </form>
 </div>
 
-<h1>勤怠連絡メール作成<span class="version">v1.08</span></h1>
+<h1>勤怠連絡メール作成<span class="version">v1.09</span></h1>
 
 <details id="settingsBlock">
   <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
@@ -153,6 +153,17 @@
         <button type="button" class="quick" onclick="copyUserHash()">📋 ハッシュをコピー</button>
       </div>
       <div class="small" id="userHashMsg" style="margin-top:4px"></div>
+    </div>
+
+    <div style="margin-top:12px;padding-top:8px;border-top:1px dashed #b6e3b6">
+      <div class="small" style="font-weight:bold;margin-bottom:4px">📱 アクセス通知（ntfy）</div>
+      <div class="small" style="margin-bottom:6px;color:#555">
+        スマホの <strong>ntfy</strong> アプリでトピック <code id="ntfyTopicLabel"></code> を購読すると、
+        管理者解錠／ノーパス入室／メール送信時にプッシュ通知が届きます。<br>
+        この端末を「管理者扱い」にすると、自分の操作では通知が飛ばなくなります。
+      </div>
+      <div class="small" id="adminDeviceStatus" style="margin-bottom:6px"></div>
+      <button type="button" class="quick" id="adminDeviceToggleBtn" onclick="toggleAdminDevice()"></button>
     </div>
 
     <div id="hashToolBlock" style="margin-top:12px;padding-top:8px;border-top:1px dashed #b6e3b6">
@@ -253,6 +264,53 @@
 const STORAGE_KEY = 'kintai_mail_settings_v1';
 const DEFAULT_TO_ADDR = 'kinmu@yuusin-d.com';
 const AUTH_URL = 'https://raw.githubusercontent.com/takedia/kintai-mail/main/data/auth.json';
+
+// ===== ntfy 通知 =====
+const NTFY_TOPIC = 'kintai-mail-takedia-2026m4k8';
+const NTFY_URL = 'https://ntfy.sh/';
+const ADMIN_DEVICE_KEY = 'kintai-mail-is-admin-device';
+const sentInSession = new Set();
+
+function isAdminDevice() {
+  try { return localStorage.getItem(ADMIN_DEVICE_KEY) === '1'; } catch { return false; }
+}
+function markAsAdminDevice() {
+  try { localStorage.setItem(ADMIN_DEVICE_KEY, '1'); } catch {}
+}
+function unmarkAsAdminDevice() {
+  try { localStorage.removeItem(ADMIN_DEVICE_KEY); } catch {}
+}
+
+async function notifyAccess(kind, note) {
+  if (isAdminDevice()) return;
+  // mail-sent はメール毎に送りたいのでセッション抑制から除外
+  if (kind !== 'mail-sent') {
+    if (sentInSession.has(kind)) return;
+    sentInSession.add(kind);
+  }
+  const title =
+    kind === 'admin-unlock'     ? '🔑 勤怠メール: 管理者解錠' :
+    kind === 'no-password-open' ? '🚪 勤怠メール: ノーパス入室' :
+    kind === 'mail-sent'        ? '📨 勤怠メール: 送信実行' :
+                                  '👤 勤怠メール: アクセス';
+  const ua = (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 16);
+  const body = JSON.stringify({
+    topic: NTFY_TOPIC,
+    title,
+    message: `${ts}\nUA: ${ua}${note ? '\n' + note : ''}`,
+    priority: kind === 'admin-unlock' ? 2 : 3,
+    tags: [kind]
+  });
+  try {
+    await fetch(NTFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true
+    });
+  } catch {}
+}
 
 // 管理者モードフラグ（セッション内のみ・メモリのみ）
 let adminMode = false;
@@ -594,6 +652,7 @@ function getMailParts() {
 
 function sendViaGmailWeb() {
   const m = getMailParts(); if (!m) return;
+  notifyAccess('mail-sent', `[Gmail] ${m.subject}`);
   const url = 'https://mail.google.com/mail/?view=cm&fs=1' +
     `&to=${encodeURIComponent(m.toAddr)}` +
     `&su=${encodeURIComponent(m.subject)}` +
@@ -603,6 +662,7 @@ function sendViaGmailWeb() {
 
 function sendViaMailto() {
   const m = getMailParts(); if (!m) return;
+  notifyAccess('mail-sent', `[mailto] ${m.subject}`);
   const url = `mailto:${encodeURIComponent(m.toAddr)}` +
     `?subject=${encodeURIComponent(m.subject)}` +
     `&body=${encodeURIComponent(m.body)}`;
@@ -661,6 +721,7 @@ async function bootstrapUserAuth() {
   userAuthHash = (typeof info.passwordHash === 'string') ? info.passwordHash.trim() : '';
   if (userAuthHash.length === 0) {
     overlay.style.display = 'none';
+    notifyAccess('no-password-open');
   } else {
     overlay.style.display = 'flex';
     setTimeout(() => document.getElementById('userPw')?.focus(), 50);
@@ -720,6 +781,11 @@ async function submitAdminLogin() {
     applyAdminMode();
     refreshUserPwStatus(info);
     msg.textContent = '';
+    // 初回成功時はこの端末を管理者扱いにマーク（以降通知抑制）
+    const wasAdminDevice = isAdminDevice();
+    notifyAccess('admin-unlock');
+    if (!wasAdminDevice) markAsAdminDevice();
+    refreshAdminDeviceUI();
   } else {
     msg.textContent = 'パスワードが一致しません';
     msg.style.color = '#b00020';
@@ -746,6 +812,7 @@ function applyAdminMode() {
     entryBtn.hidden = true;
     loginForm.hidden = true;
     panel.hidden = false;
+    refreshAdminDeviceUI();
   } else {
     toAddrInput.setAttribute('readonly', '');
     lockMark.textContent = '🔒 管理者のみ変更可';
@@ -836,6 +903,27 @@ async function copyUserHash() {
   } catch (e) {
     msg.textContent = 'コピー失敗。手動で選択してコピーしてください。';
     msg.style.color = '#b00020';
+  }
+}
+
+function toggleAdminDevice() {
+  if (isAdminDevice()) unmarkAsAdminDevice();
+  else markAsAdminDevice();
+  refreshAdminDeviceUI();
+}
+
+function refreshAdminDeviceUI() {
+  const status = document.getElementById('adminDeviceStatus');
+  const btn = document.getElementById('adminDeviceToggleBtn');
+  const topicLabel = document.getElementById('ntfyTopicLabel');
+  if (topicLabel) topicLabel.textContent = NTFY_TOPIC;
+  if (!status || !btn) return;
+  if (isAdminDevice()) {
+    status.innerHTML = '現在: <span style="color:#1a5d1a;font-weight:bold">🔕 管理者扱い（通知なし）</span>';
+    btn.textContent = '🔔 通常端末に戻す';
+  } else {
+    status.innerHTML = '現在: <span style="color:#c2410c;font-weight:bold">🔔 通常端末（通知あり）</span>';
+    btn.textContent = '🔕 この端末を管理者扱いにする';
   }
 }
 
