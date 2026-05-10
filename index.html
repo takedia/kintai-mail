@@ -85,17 +85,17 @@
 </head>
 <body>
 
-<h1>勤怠連絡メール作成<span class="version">v1.03</span></h1>
+<h1>勤怠連絡メール作成<span class="version">v1.05</span></h1>
 
 <details id="settingsBlock">
   <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
-  <label class="block">送信先メールアドレス（ボタンで選択 / 直接入力どちらも可）</label>
-  <input type="email" id="toAddr" list="toAddrList" placeholder="例: kinmu@yuusin-d.com" autocomplete="off">
+  <label class="block">送信先メールアドレス <span id="toAddrLockMark" style="color:#888;font-size:12px">🔒 管理者のみ変更可</span></label>
+  <input type="email" id="toAddr" list="toAddrList" placeholder="例: kinmu@yuusin-d.com" autocomplete="off" readonly>
   <datalist id="toAddrList">
     <option value="kinmu@yuusin-d.com">勤怠連絡（勤務先）</option>
   </datalist>
-  <div class="actions" style="margin-top:6px">
-    <button type="button" class="quick" onclick="setToAddr('kinmu@yuusin-d.com')">デフォルトを選択</button>
+  <div class="actions" style="margin-top:6px" id="toAddrAdminActions" hidden>
+    <button type="button" class="quick" onclick="setToAddr('kinmu@yuusin-d.com')">デフォルトに戻す</button>
     <button type="button" class="quick" onclick="setToAddr('')">クリア</button>
   </div>
   <label class="block">氏名（件名・本文に挿入）</label>
@@ -105,6 +105,43 @@
     <button class="secondary" onclick="clearSettings()">設定をクリア</button>
   </div>
   <div class="small" id="storageStatus" style="margin-top:6px"></div>
+
+  <div id="adminBlock" style="margin-top:14px;padding-top:10px;border-top:1px dashed #ccc">
+    <div id="adminLoginRow">
+      <button type="button" class="quick" onclick="openAdminLogin()">🔓 管理者ログイン</button>
+      <span class="small" style="margin-left:6px">送信先メールアドレスを変更するにはログインが必要です</span>
+    </div>
+    <div id="adminLoginForm" hidden style="margin-top:8px">
+      <input type="password" id="adminPw" placeholder="管理者パスワード" autocomplete="current-password" style="margin-bottom:6px">
+      <div class="actions">
+        <button type="button" class="quick" onclick="submitAdminLogin()">ログイン</button>
+        <button type="button" class="quick" onclick="closeAdminLogin()">キャンセル</button>
+      </div>
+      <div class="small" id="adminLoginMsg" style="margin-top:4px"></div>
+    </div>
+    <div id="adminLoggedInRow" hidden style="margin-top:6px">
+      <span class="small" style="color:#1a5d1a">✅ 管理者ログイン中（このタブを閉じるまで有効）</span>
+      <button type="button" class="quick" style="margin-left:8px" onclick="adminLogout()">ログアウト</button>
+    </div>
+
+    <div id="hashToolBlock" hidden style="margin-top:12px;padding-top:10px;border-top:1px dashed #ccc">
+      <div class="small" style="font-weight:bold;margin-bottom:4px">🔑 管理者パスワード変更（ハッシュ生成ツール）</div>
+      <div class="small" style="margin-bottom:6px;color:#555">
+        新しいパスワードを入力 → 「生成」 → ハッシュをコピー →
+        <a href="https://github.com/takedia/kintai-mail/edit/main/data/auth.json" target="_blank" rel="noopener">data/auth.json を編集</a>
+        → <code>adminPasswordHash</code> の値を置き換えて Commit。
+      </div>
+      <input type="text" id="hashInput" placeholder="新しいパスワード" autocomplete="off" style="margin-bottom:6px">
+      <div class="actions">
+        <button type="button" class="quick" onclick="generateHash()">生成</button>
+      </div>
+      <div id="hashOutputBox" hidden style="margin-top:8px;padding:8px 10px;background:#f3f4f6;border-radius:6px">
+        <code id="hashOutput" style="font-size:11px;font-family:ui-monospace,'Courier New',monospace;word-break:break-all;display:block;margin-bottom:6px"></code>
+        <button type="button" class="quick" onclick="copyHash()">📋 コピー</button>
+      </div>
+      <div class="small" id="hashMsg" style="margin-top:4px;color:#1a5d1a"></div>
+    </div>
+  </div>
 </details>
 
 <fieldset>
@@ -150,6 +187,12 @@
   <div class="small">「振替」を選択した場合のみ入力。</div>
 </fieldset>
 
+<fieldset>
+  <legend>5. 補足事項（任意）</legend>
+  <textarea id="extraNote" rows="3" placeholder="例: 急な体調不良のため、本日中の連絡となり申し訳ありません。" style="width:100%;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:4px;font-family:inherit;resize:vertical;"></textarea>
+  <div class="small">入力した場合のみ、本文末尾に追記されます。空欄ならそのまま。</div>
+</fieldset>
+
 <fieldset class="preview">
   <legend>プレビュー</legend>
   <h3>件名</h3>
@@ -177,10 +220,16 @@
 
 <script>
 const STORAGE_KEY = 'kintai_mail_settings_v1';
+const DEFAULT_TO_ADDR = 'kinmu@yuusin-d.com';
+const AUTH_URL = 'https://raw.githubusercontent.com/takedia/kintai-mail/main/data/auth.json';
+
+// 管理者モードフラグ（セッション内のみ・メモリのみ）
+let adminMode = false;
 
 function loadSettings() {
   const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  document.getElementById('toAddr').value = s.toAddr || '';
+  // 送信先は未保存ならデフォルトを必ずセット
+  document.getElementById('toAddr').value = s.toAddr || DEFAULT_TO_ADDR;
   document.getElementById('senderName').value = s.senderName || '';
 }
 
@@ -199,9 +248,9 @@ function saveSettings() {
 }
 
 function clearSettings() {
-  if (!confirm('設定をクリアします。よろしいですか?')) return;
+  if (!confirm('設定をクリアします。よろしいですか?\n（送信先メールアドレスはデフォルトに戻ります）')) return;
   try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
-  document.getElementById('toAddr').value = '';
+  document.getElementById('toAddr').value = DEFAULT_TO_ADDR;
   document.getElementById('senderName').value = '';
   update();
 }
@@ -320,12 +369,15 @@ function buildBody(name) {
   const countPart = r.end && count > 0 ? `（${count}日間）` : '';
   const dateLine = formatRangeForBody(r) + countPart;
 
+  const extra = (document.getElementById('extraNote')?.value || '').trim();
+  const extraBlock = extra ? `\n\n補足事項：\n${extra}` : '';
+
   return `欠勤届（${mark}${category}）
 欠勤日：　${dateLine}
 有給：${yuukyuMark}
 欠勤：${kekkinMark}
 ${furikaeLine}
-氏名：${name || ''}`;
+氏名：${name || ''}${extraBlock}`;
 }
 
 function updateSettingsBadge() {
@@ -550,20 +602,160 @@ async function copyText(which) {
   }
 }
 
+// ===== 管理者ログイン =====
+async function sha256Hex(text) {
+  const buf = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function fetchAdminHash() {
+  try {
+    const res = await fetch(`${AUTH_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.adminPasswordHash === 'string' ? data.adminPasswordHash : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function openAdminLogin() {
+  document.getElementById('adminLoginRow').hidden = true;
+  document.getElementById('adminLoginForm').hidden = false;
+  document.getElementById('adminLoginMsg').textContent = '';
+  document.getElementById('adminPw').value = '';
+  document.getElementById('adminPw').focus();
+}
+
+function closeAdminLogin() {
+  document.getElementById('adminLoginForm').hidden = true;
+  document.getElementById('adminLoginRow').hidden = false;
+  document.getElementById('adminPw').value = '';
+}
+
+async function submitAdminLogin() {
+  const msg = document.getElementById('adminLoginMsg');
+  const pw = (document.getElementById('adminPw').value || '').trim();
+  if (!pw) return;
+  msg.textContent = '確認中…';
+  msg.style.color = '#666';
+  const expected = await fetchAdminHash();
+  if (!expected) {
+    msg.textContent = '⚠️ 認証情報の取得に失敗しました（オフライン or 設定未配置）';
+    msg.style.color = '#b00020';
+    return;
+  }
+  const inputHash = await sha256Hex(pw);
+  if (inputHash.toLowerCase() === expected.toLowerCase()) {
+    adminMode = true;
+    document.getElementById('adminPw').value = '';
+    applyAdminMode();
+    msg.textContent = '';
+  } else {
+    msg.textContent = 'パスワードが一致しません';
+    msg.style.color = '#b00020';
+    setTimeout(() => { if (msg.textContent === 'パスワードが一致しません') msg.textContent = ''; }, 4000);
+  }
+}
+
+function adminLogout() {
+  adminMode = false;
+  applyAdminMode();
+}
+
+function applyAdminMode() {
+  const toAddrInput = document.getElementById('toAddr');
+  const lockMark = document.getElementById('toAddrLockMark');
+  const adminActions = document.getElementById('toAddrAdminActions');
+  const loginRow = document.getElementById('adminLoginRow');
+  const loginForm = document.getElementById('adminLoginForm');
+  const loggedInRow = document.getElementById('adminLoggedInRow');
+  const hashTool = document.getElementById('hashToolBlock');
+
+  if (adminMode) {
+    toAddrInput.removeAttribute('readonly');
+    lockMark.textContent = '🔓 編集可能（管理者）';
+    lockMark.style.color = '#1a5d1a';
+    adminActions.hidden = false;
+    loginRow.hidden = true;
+    loginForm.hidden = true;
+    loggedInRow.hidden = false;
+    if (hashTool) hashTool.hidden = false;
+  } else {
+    toAddrInput.setAttribute('readonly', '');
+    lockMark.textContent = '🔒 管理者のみ変更可';
+    lockMark.style.color = '#888';
+    adminActions.hidden = true;
+    loginRow.hidden = false;
+    loginForm.hidden = true;
+    loggedInRow.hidden = true;
+    if (hashTool) hashTool.hidden = true;
+    // ツールのフィールドもクリア
+    const hi = document.getElementById('hashInput');
+    const hob = document.getElementById('hashOutputBox');
+    const hm = document.getElementById('hashMsg');
+    if (hi) hi.value = '';
+    if (hob) hob.hidden = true;
+    if (hm) hm.textContent = '';
+  }
+}
+
+async function generateHash() {
+  const input = (document.getElementById('hashInput').value || '').trim();
+  const msg = document.getElementById('hashMsg');
+  const box = document.getElementById('hashOutputBox');
+  const out = document.getElementById('hashOutput');
+  if (!input) {
+    msg.textContent = 'パスワードを入力してください';
+    msg.style.color = '#b00020';
+    return;
+  }
+  const hash = await sha256Hex(input);
+  out.textContent = hash;
+  box.hidden = false;
+  msg.textContent = '';
+}
+
+async function copyHash() {
+  const text = document.getElementById('hashOutput').textContent;
+  const msg = document.getElementById('hashMsg');
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    msg.textContent = '✅ ハッシュをコピーしました。GitHub の auth.json に貼り付けてください。';
+    msg.style.color = '#1a5d1a';
+  } catch (e) {
+    msg.textContent = 'コピー失敗。手動で選択してコピーしてください。';
+    msg.style.color = '#b00020';
+  }
+}
+
 function init() {
   try { loadSettings(); } catch (e) { console.error('loadSettings failed:', e); }
+  applyAdminMode();
 
   // 欠勤日は未入力で開始（自動入力しない）
 
-  document.querySelectorAll('input').forEach(el => {
+  document.querySelectorAll('input, textarea').forEach(el => {
     el.addEventListener('change', update);
     el.addEventListener('input', update);
   });
 
+  // 管理者パスワード欄は Enter で送信
+  const pwEl = document.getElementById('adminPw');
+  if (pwEl) {
+    pwEl.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); submitAdminLogin(); }
+    });
+  }
+
   update();
 
-  // 設定（toAddr or 氏名）が未入力なら設定パネルを開く
-  if (!getLiveToAddr() || !getLiveSenderName()) {
+  // 氏名が未入力なら設定パネルを開く（送信先はデフォルトが入るため判定対象外）
+  if (!getLiveSenderName()) {
     const sb = document.getElementById('settingsBlock');
     if (sb) sb.open = true;
   }
