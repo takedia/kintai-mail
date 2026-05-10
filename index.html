@@ -85,7 +85,7 @@
 </head>
 <body>
 
-<div id="userLockOverlay" hidden style="position:fixed;inset:0;background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 100%);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px">
+<div id="userLockOverlay" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#eef2ff 0%,#f5f3ff 100%);align-items:center;justify-content:center;z-index:1000;padding:20px">
   <form id="userLockForm" style="background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.08);padding:24px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px" onsubmit="event.preventDefault();submitUserLogin();">
     <h2 style="margin:0;text-align:center;font-size:18px">勤怠連絡メール作成</h2>
     <p style="margin:0;text-align:center;color:#666;font-size:13px">パスワードを入力してください</p>
@@ -95,7 +95,7 @@
   </form>
 </div>
 
-<h1>勤怠連絡メール作成<span class="version">v1.06</span></h1>
+<h1>勤怠連絡メール作成<span class="version">v1.07</span></h1>
 
 <details id="settingsBlock">
   <summary>⚙️ 設定 <span id="settingsBadge"></span></summary>
@@ -655,14 +655,14 @@ async function bootstrapUserAuth() {
   const info = await fetchAuthInfo();
   // 取得失敗 = ローカルファイル直開きなど → ゲート無効化（フェイルオープン）
   if (!info) {
-    overlay.hidden = true;
+    overlay.style.display = 'none';
     return;
   }
   userAuthHash = (typeof info.passwordHash === 'string') ? info.passwordHash.trim() : '';
   if (userAuthHash.length === 0) {
-    overlay.hidden = true;
+    overlay.style.display = 'none';
   } else {
-    overlay.hidden = false;
+    overlay.style.display = 'flex';
     setTimeout(() => document.getElementById('userPw')?.focus(), 50);
   }
 }
@@ -676,7 +676,7 @@ async function submitUserLogin() {
   const inputHash = await sha256Hex(pw);
   if (userAuthHash && inputHash.toLowerCase() === userAuthHash.toLowerCase()) {
     document.getElementById('userPw').value = '';
-    document.getElementById('userLockOverlay').hidden = true;
+    document.getElementById('userLockOverlay').style.display = 'none';
     msg.textContent = '';
   } else {
     msg.textContent = 'パスワードが一致しません';
